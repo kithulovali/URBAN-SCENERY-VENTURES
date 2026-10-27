@@ -16,19 +16,23 @@ def list_users(
     limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    user_svc = UserService(db)
-    return user_svc.get_all_users(offset=offset, limit=limit)
+    return UserService(db).get_all_users(offset=offset, limit=limit)
 
 
 @router.get("/{public_id}", response_model=UserOut)
-def get_user_by_id(public_id: UUID, db: Session = Depends(get_db)):
+def get_user_by_id(
+    public_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     user_svc = UserService(db)
     user = user_svc.get_by_public_id(public_id)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with ID {public_id} not found",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    is_admin = str(getattr(getattr(current_user, "role", None), "name", "")).upper() == "ADMIN"
+    if current_user.public_id != user.public_id and not is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only view your own profile")
     return user
 
 
@@ -44,27 +48,17 @@ def update_user_profile(
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # Only user themselves or Admin can update
-    is_admin = (
-        current_user.role.value == "ADMIN"
-        if hasattr(current_user.role, "value")
-        else str(current_user.role) == "ADMIN"
-    )
-    if current_user.public_id != public_id and not is_admin:
+    is_admin = str(getattr(getattr(current_user, "role", None), "name", "")).upper() == "ADMIN"
+    if current_user.public_id != user.public_id and not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only update your own profile",
         )
 
-    updated_user = user_svc.update_user(
-        public_id, updates=payload.model_dump(exclude_unset=True)
-    )
-    return updated_user
+    return user_svc.update_user(public_id, updates=payload.model_dump(exclude_unset=True))
 
 
 @router.delete("/{public_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(get_current_admin)])
 def delete_user(public_id: UUID, db: Session = Depends(get_db)):
-    user_svc = UserService(db)
-    success = user_svc.remove_user(public_id)
-    if not success:
+    if not UserService(db).remove_user(public_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
