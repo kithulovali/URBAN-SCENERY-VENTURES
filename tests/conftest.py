@@ -1,9 +1,8 @@
 import pytest
+import models  # noqa: F401 - register all ORM models with the declarative metadata
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
-
-from models import Model if False else User
 from settings import Model
 
 
@@ -15,7 +14,9 @@ def session():
         poolclass=StaticPool,
     )
     Model.metadata.create_all(bind=engine)
-    with Session(engine, expire_on_commit=False) as db:
-        yield db
-    Model.metadata.drop_all(bind=engine)
-    engine.dispose()
+    try:
+        with Session(engine, expire_on_commit=False) as db:
+            yield db
+    finally:
+        Model.metadata.drop_all(bind=engine)
+        engine.dispose()
