@@ -31,15 +31,12 @@ def process_order_payment(
     if order.payment_status == "PAID":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Order #{payload.order_id} has already been paid for")
 
-    try:
-        return payment_service.create_payment(
-            order_id=payload.order_id,
-            payment_method=payload.payment_method,
-            amount=payload.amount,
-            session=db,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    # No payment gateway or verified confirmation callback is configured yet.
+    # Never mark an order PAID based only on a client-supplied amount.
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Payment processing is not configured; no payment was recorded.",
+    )
 
 
 @router.get("/{payment_id}", response_model=PaymentOut)
