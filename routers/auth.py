@@ -18,14 +18,14 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
             detail="A user with this email address already exists.",
         )
 
-    user = user_svc.create_user(
+    # Public registration must never allow callers to assign privileged roles.
+    return user_svc.create_user(
         email=payload.email,
         name=payload.name,
         password=payload.password,
-        role=payload.role,
+        role="CUSTOMER",
         contact=payload.contact,
     )
-    return user
 
 
 @router.post("/login", response_model=TokenOut)
