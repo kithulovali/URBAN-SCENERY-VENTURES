@@ -14,7 +14,6 @@ _UPDATABLE_FIELDS = {"payment_method", "amount"}
 
 def create_payment(order_id, payment_method="BANK", amount=None, session: Session | None = None) -> Payment:
     # Supports create_payment(order_id, method, amount, session) and create_payment(Payment(...), session).
-    supplied_payment = None
     if isinstance(order_id, Payment):
         supplied_payment = order_id
         if isinstance(payment_method, Session):
@@ -31,12 +30,17 @@ def create_payment(order_id, payment_method="BANK", amount=None, session: Sessio
     if order is None:
         raise ValueError(f"Order with ID {order_id} not found")
 
+    payment_amount = Decimal(str(amount if amount is not None else order.total_price))
+    if payment_amount <= 0:
+        raise ValueError("Payment amount must be greater than zero")
+    if payment_amount != Decimal(str(order.total_price)):
+        raise ValueError(f"Payment amount must equal the order total ({order.total_price})")
+
     existing = session.scalars(select(Payment).where(Payment.order_id == order_id)).first()
     if existing:
         raise ValueError(f"Payment already recorded for Order #{order_id}")
 
-    # Resolve all lookup rows before creating/attaching Payment. This avoids autoflush
-    # queries while a transient Payment is already present in relationship collections.
+    # Resolve lookup rows before creating/attaching Payment to avoid relationship autoflush warnings.
     method = get_lookup(session, PaymentMethod, payment_method or "BANK")
     paid_status = get_lookup(session, PaymentStatus, "PAID")
     approved_status = get_lookup(session, OrderStatus, "APPROVED")
@@ -45,7 +49,7 @@ def create_payment(order_id, payment_method="BANK", amount=None, session: Sessio
         order=order,
         order_id=order_id,
         payment_method_record=method,
-        amount=Decimal(str(amount if amount is not None else order.total_price)),
+        amount=payment_amount,
     )
     session.add(payment)
     order.payment_status_record = paid_status
@@ -77,7 +81,10 @@ def update_payment(payment_id: int, updates: dict[str, object], session: Session
         if field == "payment_method":
             payment.payment_method_record = get_lookup(session, PaymentMethod, str(value))
         elif field == "amount":
-            payment.amount = Decimal(str(value))
+            new_amount = Decimal(str(value))
+            if new_amount != Decimal(str(payment.order.total_price)):
+                raise ValueError(f"Payment amount must equal the order total ({payment.order.total_price})")
+            payment.amount = new_amount
     session.commit()
     session.refresh(payment)
     return payment
@@ -90,8 +97,7 @@ def delete_payment(payment_id: int, session: Session) -> bool:
     order = payment.order
     session.delete(payment)
     session.commit()
-    # expire_on_commit=False sessions may retain the deleted child in the scalar
-    # relationship; expire it so later order deletion does not try deleting it twice.
+    # expire_on_commit=False sessions may retain the deleted child in the scalar relationship.
     if order is not None and order in session:
         session.expire(order, ["payment"])
     return True
