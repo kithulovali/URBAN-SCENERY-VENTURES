@@ -12,6 +12,7 @@ from settings import sessionlocal, engine, Model
 from core.database import init_db
 from models.products_model import Product
 from models.utils import ProductStatus
+from services.lookup_service import get_lookup
 
 
 def run_tests():
@@ -41,7 +42,7 @@ def run_tests():
             price=Decimal("299.99"),
             description="4K camera drone with GPS and auto return",
             quantity=10,
-            status=ProductStatus.Available.value,
+            product_status_record=get_lookup(db, ProductStatus, "AVAILABLE"),
         )
         db.add(test_prod)
         db.commit()
