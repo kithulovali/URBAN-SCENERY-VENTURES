@@ -125,9 +125,13 @@ def _collect_context(db: Session, include_orders: bool = True) -> dict[str, Any]
         "low_stock_products_threshold_5": low_stock,
         "out_of_stock_products": [p for p in catalogue if p["quantity"] <= 0],
         "data_note": (
-            "Newest 300 products and newest 1000 orders by ID are loaded; these are "
-            "capped records, not lifetime totals. Order value is not verified revenue. "
-            "Paid value reflects order payment status only, not independent provider settlement."
+            "Newest 300 products by ID are loaded; order records are excluded for this agent."
+            if not include_orders
+            else (
+                "Newest 300 products and newest 1000 orders by ID are loaded; these are "
+                "capped records, not lifetime totals. Order value is not verified revenue. "
+                "Paid value reflects order payment status only, not independent provider settlement."
+            )
         ),
     }
     return {"catalogue": catalogue, "orders": orders_data, "summary": summary}
