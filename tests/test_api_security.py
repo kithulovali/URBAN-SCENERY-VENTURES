@@ -111,3 +111,37 @@ def test_payment_endpoint_does_not_fake_success_without_provider(client, session
     assert "no payment was recorded" in response.json()["detail"].lower()
     assert session.get(Payment, 1) is None
     assert session.get(type(order), order.id).payment_status == "NOT YET PAID"
+
+
+def test_order_details_require_authentication_and_owner_access(client, session):
+    service = UserService(session)
+    owner = service.create_user(
+        email="order.owner@example.test", name="Order Owner", password="test-password"
+    )
+    other = service.create_user(
+        email="order.other@example.test", name="Other Customer", password="test-password"
+    )
+    product = Product(
+        name="Order privacy product", price=Decimal("10.00"), quantity=3,
+        product_status_record=get_lookup(session, ProductStatus, "AVAILABLE"),
+    )
+    session.add(product)
+    session.commit()
+    order = create_order(
+        product_id=product.id, quantity=1, address="123 Privacy Road",
+        contact="0700000000", session=session, user_id=owner.private_id
+    )
+
+    anonymous = client.get(f"/api/v1/orders/{order.id}")
+    assert anonymous.status_code == 401
+
+    forbidden = client.get(
+        f"/api/v1/orders/{order.id}", headers=auth_headers(other)
+    )
+    assert forbidden.status_code == 403
+
+    own_order = client.get(
+        f"/api/v1/orders/{order.id}", headers=auth_headers(owner)
+    )
+    assert own_order.status_code == 200
+    assert own_order.json()["id"] == order.id
