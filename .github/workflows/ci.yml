@@ -26,4 +26,4 @@ jobs:
           DATABASE_URL: sqlite:///./ci_test.db
           GOOGLE_API_KEY: ""
           GEMINI_API_KEY: ""
-        run: python -m pytest -q
+        run: python -m pytest -q -W error::starlette.exceptions.StarletteDeprecationWarning
