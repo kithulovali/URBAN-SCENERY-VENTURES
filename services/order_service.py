@@ -10,15 +10,13 @@ from services.lookup_service import get_lookup
 
 def create_order(product_id, quantity=None, address=None, contact=None, payment_method="BANK",
                  session: Session | None = None, user_id: Optional[UUID] = None) -> Order:
-    # Supports both the API argument form and the legacy create_order(Order(...), session) form.
     if isinstance(product_id, Order):
         supplied_order = product_id
         if isinstance(quantity, Session):
             session = quantity
         if session is None:
             raise TypeError("A database session is required")
-        product_id = supplied_order.product_id
-        quantity = supplied_order.quantity
+        product_id, quantity = supplied_order.product_id, supplied_order.quantity
         address = supplied_order.address
         contact = getattr(supplied_order, "contacs", None) or getattr(supplied_order, "contact", None)
         payment_method = getattr(supplied_order, "_payment_method_name", "BANK")
@@ -53,7 +51,7 @@ def get_all_orders(session: Session, offset: int = 0, limit: int = 100):
     return list(session.scalars(select(Order).offset(offset).limit(limit)).all())
 
 def get_user_orders(user_id: UUID, session: Session):
-    return list(session.scalars(select(Order).where(Order.user_id == user_id).all())
+    return list(session.scalars(select(Order).where(Order.user_id == user_id)).all())
 
 def update_order(order_id: int, updates: dict[str, object], session: Session) -> Optional[Order]:
     order = session.get(Order, order_id)
