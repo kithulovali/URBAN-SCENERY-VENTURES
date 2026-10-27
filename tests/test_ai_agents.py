@@ -3,7 +3,8 @@ from decimal import Decimal
 from models import Product
 from models.utils import ProductStatus
 from services.ai_agents import run_agent, _collect_context
-from services.lookup_service import get_lookup\nfrom services.order_service import create_order, update_order
+from services.lookup_service import get_lookup
+from services.order_service import create_order, update_order
 
 
 def test_agents_use_deterministic_fallback_without_api_key(session, monkeypatch):
