@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from models.order_model import Order
 from models.products_model import Product
@@ -23,26 +23,55 @@ def create_order(product_id, quantity=None, address=None, contact=None, payment_
         user_id = supplied_order.user_id
     if session is None:
         raise TypeError("A database session is required")
-    quantity = int(quantity or 1)
-    product = session.get(Product, int(product_id))
-    if product is None:
-        raise ValueError(f"Product with id {product_id} not found")
-    if quantity < 1 or product.quantity < quantity:
-        raise ValueError(f"Insufficient stock for product '{product.name}'. Available: {product.quantity}, Requested: {quantity}")
-    product.quantity -= quantity
-    if product.quantity == 0:
-        product.product_status_record = get_lookup(session, ProductStatus, "EMPTY")
-    unit_price = Decimal(str(product.price))
-    order = Order(address=(address or "").strip(), contacs=(contact or "").strip(),
-        order_status_record=get_lookup(session, OrderStatus, "PENDING"),
-        payment_method_record=get_lookup(session, PaymentMethod, payment_method or "BANK"),
-        payment_status_record=get_lookup(session, PaymentStatus, "NOT YET PAID"),
-        initial_price=unit_price, total_price=unit_price * quantity, quantity=quantity,
-        product=product, user_id=user_id)
-    session.add(order)
-    session.commit()
-    session.refresh(order)
-    return order
+
+    quantity = 1 if quantity is None else int(quantity)
+    if quantity < 1:
+        raise ValueError("Order quantity must be at least 1")
+
+    try:
+        # Reserve stock with a conditional UPDATE so simultaneous orders cannot
+        # both succeed using the same stale quantity read.
+        result = session.execute(
+            update(Product)
+            .where(Product.id == int(product_id), Product.quantity >= quantity)
+            .values(quantity=Product.quantity - quantity)
+            .execution_options(synchronize_session="fetch")
+        )
+        if result.rowcount != 1:
+            product = session.get(Product, int(product_id))
+            if product is None:
+                raise ValueError(f"Product with id {product_id} not found")
+            raise ValueError(
+                f"Insufficient stock for product '{product.name}'. "
+                f"Available: {product.quantity}, Requested: {quantity}"
+            )
+
+        product = session.get(Product, int(product_id))
+        if product is None:
+            raise ValueError(f"Product with id {product_id} not found")
+        if product.quantity == 0:
+            product.product_status_record = get_lookup(session, ProductStatus, "EMPTY")
+
+        unit_price = Decimal(str(product.price))
+        order = Order(
+            address=(address or "").strip(),
+            contacs=(contact or "").strip(),
+            order_status_record=get_lookup(session, OrderStatus, "PENDING"),
+            payment_method_record=get_lookup(session, PaymentMethod, payment_method or "BANK"),
+            payment_status_record=get_lookup(session, PaymentStatus, "NOT YET PAID"),
+            initial_price=unit_price,
+            total_price=unit_price * quantity,
+            quantity=quantity,
+            product=product,
+            user_id=user_id,
+        )
+        session.add(order)
+        session.commit()
+        session.refresh(order)
+        return order
+    except Exception:
+        session.rollback()
+        raise
 
 def get_order(order_id: int, session: Session) -> Optional[Order]:
     return session.get(Order, order_id)
