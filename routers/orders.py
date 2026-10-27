@@ -41,11 +41,7 @@ def list_orders(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    is_admin = (
-        current_user.role.value == "ADMIN"
-        if hasattr(current_user.role, "value")
-        else str(current_user.role) == "ADMIN"
-    )
+    is_admin = bool(current_user.role and current_user.role.name.upper() == "ADMIN")
     if is_admin:
         return order_service.get_all_orders(session=db, offset=offset, limit=limit)
     else:
@@ -66,11 +62,7 @@ def get_order_by_id(
         )
 
     if current_user:
-        is_admin = (
-            current_user.role.value == "ADMIN"
-            if hasattr(current_user.role, "value")
-            else str(current_user.role) == "ADMIN"
-        )
+        is_admin = bool(current_user.role and current_user.role.name.upper() == "ADMIN")
         if order.user_id and order.user_id != current_user.private_id and not is_admin:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
