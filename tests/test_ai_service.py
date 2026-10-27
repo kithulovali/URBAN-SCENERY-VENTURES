@@ -7,13 +7,18 @@ from services.lookup_service import get_lookup
 
 
 def test_ai_shopping_search_and_recommendations_exclude_out_of_stock(session):
+    # Resolve lookup rows before creating Products; otherwise lookup seeding can
+    # trigger autoflush while a transient Product is attached to the relationship.
+    available_status = get_lookup(session, ProductStatus, "AVAILABLE")
+    empty_status = get_lookup(session, ProductStatus, "EMPTY")
+
     available = Product(
         name="Wireless headphones", price=Decimal("40.00"), quantity=2,
-        product_status_record=get_lookup(session, ProductStatus, "AVAILABLE"),
+        product_status_record=available_status,
     )
     empty = Product(
         name="Wireless headphones out of stock", price=Decimal("35.00"), quantity=0,
-        product_status_record=get_lookup(session, ProductStatus, "EMPTY"),
+        product_status_record=empty_status,
     )
     session.add_all([available, empty])
     session.commit()
