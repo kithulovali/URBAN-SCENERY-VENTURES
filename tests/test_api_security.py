@@ -1,8 +1,14 @@
+from decimal import Decimal
+
 from fastapi.testclient import TestClient
 import pytest
 
 from core.security import create_access_token
 from main import app
+from models import Payment, Product
+from models.utils import ProductStatus
+from services.lookup_service import get_lookup
+from services.order_service import create_order
 from services.user_service import UserService
 from settings import get_db
 
@@ -75,3 +81,33 @@ def test_admin_can_update_another_users_profile(client, session):
     )
     assert response.status_code == 200, response.text
     assert response.json()["name"] == "Updated Customer"
+
+
+def test_payment_endpoint_does_not_fake_success_without_provider(client, session):
+    service = UserService(session)
+    customer = service.create_user(
+        email="payment.customer@example.test", name="Payment Customer", password="test-password"
+    )
+    product = Product(
+        name="Payment test product",
+        price=Decimal("25.00"),
+        quantity=2,
+        product_status_record=get_lookup(session, ProductStatus, "AVAILABLE"),
+    )
+    session.add(product)
+    session.commit()
+    order = create_order(
+        product_id=product.id, quantity=1, address="123 Payment Road",
+        contact="0700000000", session=session, user_id=customer.private_id
+    )
+
+    response = client.post(
+        "/api/v1/payments/pay",
+        headers=auth_headers(customer),
+        json={"order_id": order.id, "payment_method": "BANK", "amount": "25.00"},
+    )
+
+    assert response.status_code == 501
+    assert "no payment was recorded" in response.json()["detail"].lower()
+    assert session.get(Payment, 1) is None
+    assert session.get(type(order), order.id).payment_status == "NOT YET PAID"
