@@ -145,3 +145,35 @@ def test_order_details_require_authentication_and_owner_access(client, session):
     )
     assert own_order.status_code == 200
     assert own_order.json()["id"] == order.id
+
+
+
+def test_business_intelligence_agent_requires_admin(client, session):
+    service = UserService(session)
+    customer = service.create_user(
+        email="ai.customer@example.test", name="AI Customer", password="test-password"
+    )
+    anonymous = client.post(
+        "/api/v1/ai/agents/business-intelligence", json={"question": "Summarize sales"}
+    )
+    assert anonymous.status_code == 401
+
+    forbidden = client.post(
+        "/api/v1/ai/agents/business-intelligence",
+        headers=auth_headers(customer),
+        json={"question": "Summarize sales"},
+    )
+    assert forbidden.status_code == 403
+
+
+def test_admin_can_use_business_intelligence_agent(client, session):
+    admin = UserService(session).create_user(
+        email="ai.admin@example.test", name="AI Admin", password="test-password", role="ADMIN"
+    )
+    response = client.post(
+        "/api/v1/ai/agents/business-intelligence",
+        headers=auth_headers(admin),
+        json={"question": "Summarize sales"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["agent"] == "business_intelligence"
