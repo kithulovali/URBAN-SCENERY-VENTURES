@@ -82,3 +82,40 @@ def test_non_bi_agent_context_excludes_order_records(session, monkeypatch):
 
     assert calls == [False]
     assert result["data_summary"]["orders_loaded"] == 0
+
+def test_gemini_success_returns_provider_answer(session, monkeypatch):
+    import services.ai_agents as ai_agents
+
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        ai_agents,
+        "_generate_with_gemini",
+        lambda api_key, model, prompt: "Gemini analysis completed.",
+    )
+
+    result = run_agent("product_discovery", "Find a laptop", session)
+
+    assert result["model"] == "gemini-2.5-flash"
+    assert result["answer"] == "Gemini analysis completed."
+    assert "warning" not in result
+
+
+def test_gemini_failure_returns_fallback_and_warning(session, monkeypatch):
+    import services.ai_agents as ai_agents
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+
+    def fail_request(api_key, model, prompt):
+        raise TimeoutError("simulated provider timeout")
+
+    monkeypatch.setattr(ai_agents, "_generate_with_gemini", fail_request)
+
+    result = run_agent("product_discovery", "Find a laptop", session)
+
+    assert result["model"] == "deterministic-fallback"
+    assert result["warning"] == (
+        "Gemini could not complete the request; deterministic fallback used."
+    )
+    assert result["data_summary"]["orders_loaded"] == 0
