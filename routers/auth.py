@@ -44,7 +44,7 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             detail="Invalid email or password",
         )
 
-    token = create_access_token(data={"sub": str(user.private_id), "role": user.role.value if hasattr(user.role, "value") else str(user.role)})
+    token = create_access_token(data={"sub": str(user.private_id), "role": user.role.name if user.role else "GUEST"})
     return TokenOut(access_token=token, token_type="bearer", user=user)
 
 
