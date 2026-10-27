@@ -52,7 +52,7 @@ def list_orders(
 def get_order_by_id(
     order_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user_optional),
+    current_user=Depends(get_current_user),
 ):
     order = order_service.get_order(order_id, db)
     if not order:
@@ -61,13 +61,12 @@ def get_order_by_id(
             detail=f"Order #{order_id} not found",
         )
 
-    if current_user:
-        is_admin = bool(current_user.role and current_user.role.name.upper() == "ADMIN")
-        if order.user_id and order.user_id != current_user.private_id and not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You cannot view orders placed by other users",
-            )
+    is_admin = str(getattr(getattr(current_user, "role", None), "name", "")).upper() == "ADMIN"
+    if not is_admin and (order.user_id is None or order.user_id != current_user.private_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only view your own orders",
+        )
     return order
 
 
