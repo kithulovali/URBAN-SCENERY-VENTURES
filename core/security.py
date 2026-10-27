@@ -83,6 +83,12 @@ def decode_access_token(token: str) -> Optional[dict]:
         if len(parts) != 3:
             return None
         header_b64, payload_b64, signature_b64 = parts
+
+        # Accept only the signing algorithm this implementation actually uses.
+        header = json.loads(_base64url_decode(header_b64).decode("utf-8"))
+        if not isinstance(header, dict) or header.get("alg") != "HS256" or header.get("typ") != "JWT":
+            return None
+
         signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
         expected_sig = hmac.new(
             settings.SECRET_KEY.encode("utf-8"), signing_input, hashlib.sha256
@@ -91,12 +97,15 @@ def decode_access_token(token: str) -> Optional[dict]:
         if not hmac.compare_digest(expected_sig, provided_sig):
             return None
 
-        payload_bytes = _base64url_decode(payload_b64)
-        payload = json.loads(payload_bytes.decode("utf-8"))
+        payload = json.loads(_base64url_decode(payload_b64).decode("utf-8"))
+        if not isinstance(payload, dict):
+            return None
 
-        # Verify expiration
+        # Expiration is mandatory; tokens without a valid exp must never authenticate.
         exp = payload.get("exp")
-        if exp and datetime.now(timezone.utc).timestamp() > exp:
+        if isinstance(exp, bool) or not isinstance(exp, (int, float)):
+            return None
+        if datetime.now(timezone.utc).timestamp() >= exp:
             return None
 
         return payload
