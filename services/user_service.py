@@ -58,8 +58,20 @@ class UserService:
         self.session.refresh(user)
         return user
 
-    def remove_user(self, public_id: UUID | str) -> bool:
-        user = self.get_by_public_id(public_id) or self.get_user(public_id)
+    def remove_user(
+        self,
+        public_id: UUID | str | None = None,
+        *,
+        private_id: UUID | str | None = None,
+    ) -> bool:
+        """Remove a user by public ID or legacy private_id argument.
+
+        ``private_id`` is retained for compatibility with older callers.
+        """
+        identifier = public_id if public_id is not None else private_id
+        if identifier is None:
+            return False
+        user = self.get_by_public_id(identifier) or self.get_user(identifier)
         if user is None:
             return False
         self.session.delete(user)
