@@ -101,7 +101,7 @@ def _collect_context(db: Session) -> dict[str, Any]:
     non_cancelled_orders = [o for o in orders_data if o["order_status"] != "CANCELLED"]
     paid_orders = [o for o in orders_data if o["payment_status"] == "PAID"]
     summary = {
-        "catalogue_products_loaded": len(catalogue),
+        "catalogue_products": len(catalogue),
         "orders_loaded": len(orders_data),
         "order_value_loaded": round(sum(o["total_price"] for o in orders_data), 2),
         "non_cancelled_order_value_loaded": round(
@@ -137,7 +137,7 @@ def _fallback(agent: str, question: str, context: dict[str, Any]) -> str:
     s = context["summary"]
     if agent == "business_intelligence":
         return (
-            f"Loaded {s['catalogue_products_loaded']} products and {s['orders_loaded']} orders. "
+            f"Loaded {s['catalogue_products']} products and {s['orders_loaded']} orders. "
             f"Order value across loaded orders: {s['order_value_loaded']:.2f}; "
             f"non-cancelled order value: {s['non_cancelled_order_value_loaded']:.2f}; "
             f"cancelled order value: {s['cancelled_order_value_loaded']:.2f}; "
