@@ -59,8 +59,14 @@ def test_payment_crud_and_order_deletion_do_not_emit_orm_warnings(session):
     assert payment.order_id == order.id
     assert session.get(Order, order.id).payment_status == "PAID"
 
-    updated = update_payment(payment.id, {"amount": "30.00"}, session)
-    assert updated.amount == Decimal("30.00")
+    updated = update_payment(payment.id, {"amount": str(order.total_price)}, session)
+    assert updated.amount == Decimal(str(order.total_price))
+    try:
+        update_payment(payment.id, {"amount": "30.00"}, session)
+    except ValueError as error:
+        assert "must equal the order total" in str(error)
+    else:
+        raise AssertionError("A payment amount different from the order total must be rejected")
     payment_id = payment.id
     order_id = order.id
 
