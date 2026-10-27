@@ -1,79 +1,67 @@
 from uuid import UUID
-from typing import Optional, List
-from sqlalchemy import select
+from typing import Optional
+from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 from models.users_model import User
 from models.utils import UserRole
 from core.security import hash_password
+from services.lookup_service import get_lookup
 
 _UPDATABLE_FIELDS = {"name", "contact", "role"}
-
 
 class UserService:
     def __init__(self, session: Session):
         self.session = session
 
-    def create_user(
-        self,
-        email: str,
-        name: str,
-        password: Optional[str] = None,
-        role: UserRole = UserRole.Customer,
-        contact: Optional[str] = None,
-    ) -> User:
-        hashed = hash_password(password) if password else None
-        user = User(
-            email=email.strip().lower(),
-            name=name.strip(),
-            hashed_password=hashed,
-            role=role,
-            contact=contact,
-        )
+    def create_user(self, email: str, name: str, password: Optional[str] = None,
+                    role: str = "CUSTOMER", contact: Optional[str] = None) -> User:
+        role_row = get_lookup(self.session, UserRole, role or "CUSTOMER")
+        user = User(email=email.strip().lower(), name=name.strip(),
+                    hashed_password=hash_password(password) if password else None,
+                    role=role_row, contact=contact)
         self.session.add(user)
         self.session.commit()
         self.session.refresh(user)
         return user
 
     def get_by_email(self, email: str) -> Optional[User]:
-        statement = select(User).where(User.email == email.strip().lower())
-        return self.session.scalars(statement).first()
+        return self.session.scalars(select(User).where(User.email == email.strip().lower())).first()
 
-    def get_by_public_id(self, public_id: UUID) -> Optional[User]:
-        statement = select(User).where(User.public_id == public_id)
-        return self.session.scalars(statement).first()
+    def get_by_public_id(self, public_id: UUID | str) -> Optional[User]:
+        try:
+            parsed = UUID(str(public_id))
+        except (TypeError, ValueError):
+            return None
+        return self.session.scalars(select(User).where(User.public_id == parsed)).first()
 
     def get_user(self, private_id: str | UUID) -> Optional[User]:
         try:
-            user_uuid = UUID(str(private_id))
+            return self.session.get(User, UUID(str(private_id)))
         except (TypeError, ValueError):
             return None
-        return self.session.get(User, user_uuid)
 
-    def get_all_users(self, offset: int = 0, limit: int = 100) -> List[User]:
-        statement = select(User).offset(offset).limit(limit)
-        return list(self.session.scalars(statement).all())
+    def get_all_users(self, offset: int = 0, limit: int = 100):
+        return list(self.session.scalars(select(User).offset(offset).limit(limit)).all())
 
-    def update_user(
-        self, public_id: UUID, updates: dict[str, object] | None = None
-    ) -> Optional[User]:
-        user = self.get_by_public_id(public_id)
+    def update_user(self, public_id: UUID | str, updates: dict[str, object] | None = None) -> Optional[User]:
+        user = self.get_by_public_id(public_id) or self.get_user(public_id)
         if user is None:
             return None
-
-        updates = updates or {}
-        for field, value in updates.items():
-            if field in _UPDATABLE_FIELDS and value is not None:
+        for field, value in (updates or {}).items():
+            if field not in _UPDATABLE_FIELDS or value is None:
+                continue
+            if field == "role":
+                user.role = get_lookup(self.session, UserRole, str(value))
+            else:
                 setattr(user, field, value)
-
         self.session.commit()
         self.session.refresh(user)
         return user
 
-    def remove_user(self, public_id: UUID) -> bool:
-        user = self.get_by_public_id(public_id)
+    def remove_user(self, public_id: UUID | str) -> bool:
+        user = self.get_by_public_id(public_id) or self.get_user(public_id)
         if user is None:
             return False
-
         self.session.delete(user)
         self.session.commit()
         return True
