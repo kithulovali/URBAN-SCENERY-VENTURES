@@ -26,7 +26,7 @@ def get_electronics_recommendations(
     query_lower = query.lower()
     
     # 1. Fetch available products
-    statement = select(Product).where(Product.status == ProductStatus.Available.value)
+    statement = select(Product).join(Product.product_status_record).where(ProductStatus.name == "AVAILABLE")
     if max_budget:
         statement = statement.where(Product.price <= max_budget)
     
