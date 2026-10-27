@@ -177,3 +177,54 @@ def test_admin_can_use_business_intelligence_agent(client, session):
     )
     assert response.status_code == 200, response.text
     assert response.json()["agent"] == "business_intelligence"
+
+
+def test_marketing_content_agent_requires_admin(client, session):
+    customer = UserService(session).create_user(
+        email="marketing.customer@example.test",
+        name="Marketing Customer",
+        password="test-password",
+    )
+    anonymous = client.post(
+        "/api/v1/ai/agents/marketing-content", json={"question": "Write a caption"}
+    )
+    assert anonymous.status_code == 401
+
+    forbidden = client.post(
+        "/api/v1/ai/agents/marketing-content",
+        headers=auth_headers(customer),
+        json={"question": "Write a caption"},
+    )
+    assert forbidden.status_code == 403
+
+
+def test_product_discovery_rate_limit_returns_429(client, session, monkeypatch):
+    import routers.agents as agents_router
+
+    agents_router._discovery_requests.clear()
+    monkeypatch.setattr(
+        agents_router,
+        "run_agent",
+        lambda agent, question, db: {
+            "agent": agent,
+            "answer": "test",
+            "model": "deterministic-fallback",
+            "data_summary": {},
+        },
+    )
+    try:
+        for _ in range(agents_router._DISCOVERY_LIMIT):
+            response = client.post(
+                "/api/v1/ai/agents/product-discovery",
+                json={"question": "Find a desk"},
+            )
+            assert response.status_code == 200, response.text
+
+        limited = client.post(
+            "/api/v1/ai/agents/product-discovery",
+            json={"question": "Find a desk"},
+        )
+        assert limited.status_code == 429
+        assert limited.headers["retry-after"] == "60"
+    finally:
+        agents_router._discovery_requests.clear()
