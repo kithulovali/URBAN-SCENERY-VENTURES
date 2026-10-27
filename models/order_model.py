@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy import DateTime, DECIMAL, ForeignKey, Integer, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from settings import Model
+from models.utils import OrderStatus, PaymentStatus, PaymentMethod
 
 
 class Order(Model):
@@ -19,7 +20,6 @@ class Order(Model):
     user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.private_id"), nullable=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False)
     ordered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-
     user: Mapped["User | None"] = relationship("User", back_populates="orders")
     product: Mapped["Product"] = relationship("Product", back_populates="orders")
     payment: Mapped["Payment | None"] = relationship("Payment", back_populates="order", cascade="all, delete-orphan")
@@ -30,7 +30,6 @@ class Order(Model):
     @property
     def order_status(self) -> str:
         return self.order_status_record.name if self.order_status_record else getattr(self, "_order_status_name", "PENDING")
-
     @order_status.setter
     def order_status(self, value: str) -> None:
         self._order_status_name = str(getattr(value, "value", value)).strip().upper()
@@ -38,7 +37,6 @@ class Order(Model):
     @property
     def payment_status(self) -> str:
         return self.payment_status_record.name if self.payment_status_record else getattr(self, "_payment_status_name", "NOT YET PAID")
-
     @payment_status.setter
     def payment_status(self, value: str) -> None:
         self._payment_status_name = str(getattr(value, "value", value)).strip().upper()
@@ -46,7 +44,6 @@ class Order(Model):
     @property
     def payment_method(self) -> str:
         return self.payment_method_record.name if self.payment_method_record else getattr(self, "_payment_method_name", "BANK")
-
     @payment_method.setter
     def payment_method(self, value: str) -> None:
         self._payment_method_name = str(getattr(value, "value", value)).strip().upper()
