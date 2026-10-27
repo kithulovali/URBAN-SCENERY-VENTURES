@@ -4,6 +4,7 @@ from settings import sessionlocal, engine, Model
 from models.users_model import User
 from models.products_model import Product
 from models.utils import UserRole, ProductStatus
+from services.lookup_service import get_lookup
 from core.security import hash_password
 
 
@@ -21,7 +22,7 @@ def seed():
                 name="Admin Manager",
                 email=admin_email,
                 hashed_password=hash_password("admin123"),
-                role=UserRole.Admin,
+                role=get_lookup(db, UserRole, "ADMIN"),
                 contact="+250788000001",
             )
             db.add(admin)
@@ -35,7 +36,7 @@ def seed():
                 name="John Techie",
                 email=customer_email,
                 hashed_password=hash_password("customer123"),
-                role=UserRole.Customer,
+                role=get_lookup(db, UserRole, "CUSTOMER"),
                 contact="+250788000002",
             )
             db.add(customer)
