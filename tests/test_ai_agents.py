@@ -63,3 +63,22 @@ def test_business_intelligence_separates_cancelled_and_paid_order_value(session)
     assert summary["order_status_counts"]["CANCELLED"] == 1
     assert summary["payment_status_counts"]["PAID"] == 1
     assert "not verified revenue" in summary["data_note"]
+
+
+def test_non_bi_agent_context_excludes_order_records(session, monkeypatch):
+    import services.ai_agents as ai_agents
+
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    original_collect_context = ai_agents._collect_context
+    calls = []
+
+    def capture_context(db, include_orders=True):
+        calls.append(include_orders)
+        return original_collect_context(db, include_orders=include_orders)
+
+    monkeypatch.setattr(ai_agents, "_collect_context", capture_context)
+    result = ai_agents.run_agent("product_discovery", "Find a desk", session)
+
+    assert calls == [False]
+    assert result["data_summary"]["orders_loaded"] == 0
