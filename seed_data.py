@@ -97,7 +97,10 @@ def seed():
         for item in sample_electronics:
             existing = db.query(Product).filter(Product.name == item["name"]).first()
             if not existing:
-                prod = Product(**item)
+                product_data = dict(item)
+                status_name = product_data.pop("status", "AVAILABLE")
+                product_data["product_status_record"] = get_lookup(db, ProductStatus, status_name)
+                prod = Product(**product_data)
                 db.add(prod)
                 print(f"Added electronics product: {item['name']}")
 
