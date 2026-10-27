@@ -57,3 +57,12 @@ def test_access_token_with_non_numeric_expiration_is_rejected():
     )
 
     assert decode_access_token(token) is None
+
+def test_access_token_with_non_finite_expiration_is_rejected():
+    token = signed_token(
+        {"alg": "HS256", "typ": "JWT"},
+        {"sub": "user-123", "exp": float("nan")},
+    )
+
+    assert decode_access_token(token) is None
+
