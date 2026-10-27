@@ -26,7 +26,7 @@ def test_public_registration_cannot_assign_admin_role(client):
         "/api/v1/auth/register",
         json={
             "name": "First Customer",
-            "email": "first.customer@example.test",
+            "email": "first.customer@gmail.com",
             "password": "secure-test-password",
             "role": "ADMIN",
         },
