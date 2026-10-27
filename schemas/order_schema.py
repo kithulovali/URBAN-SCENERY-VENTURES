@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from schemas.product_schema import ProductOut
 
 
@@ -34,5 +34,4 @@ class OrderOut(BaseModel):
     product_id: int
     product: Optional[ProductOut] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
