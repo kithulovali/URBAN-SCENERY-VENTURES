@@ -74,3 +74,44 @@ def test_payment_crud_and_order_deletion_do_not_emit_orm_warnings(session):
     assert session.get(Payment, payment_id) is None
     assert delete_order(order_id, session) is True
     assert session.get(Order, order_id) is None
+
+def test_order_creation_reserves_stock_and_rolls_back_failed_reservation(session):
+    product = make_product(session, quantity=5)
+
+    first_order = create_order(
+        product_id=product.id, quantity=4, address="123 Test Road",
+        contact="0700000000", session=session
+    )
+    assert session.get(Product, product.id).quantity == 1
+
+    try:
+        create_order(
+            product_id=product.id, quantity=2, address="123 Test Road",
+            contact="0700000000", session=session
+        )
+    except ValueError as error:
+        assert "Insufficient stock" in str(error)
+    else:
+        raise AssertionError("An order exceeding remaining stock must be rejected")
+
+    assert session.get(Product, product.id).quantity == 1
+    assert len(session.query(Order).filter_by(product_id=product.id).all()) == 1
+    assert session.get(Order, first_order.id) is not None
+
+
+def test_order_creation_rejects_zero_quantity_without_changing_stock(session):
+    product = make_product(session, quantity=5)
+
+    try:
+        create_order(
+            product_id=product.id, quantity=0, address="123 Test Road",
+            contact="0700000000", session=session
+        )
+    except ValueError as error:
+        assert "at least 1" in str(error)
+    else:
+        raise AssertionError("Zero-quantity orders must be rejected")
+
+    assert session.get(Product, product.id).quantity == 5
+    assert session.query(Order).filter_by(product_id=product.id).count() == 0
+
