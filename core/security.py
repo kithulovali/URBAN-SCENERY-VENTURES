@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -103,7 +104,7 @@ def decode_access_token(token: str) -> Optional[dict]:
 
         # Expiration is mandatory; tokens without a valid exp must never authenticate.
         exp = payload.get("exp")
-        if isinstance(exp, bool) or not isinstance(exp, (int, float)):
+        if isinstance(exp, bool) or not isinstance(exp, (int, float)) or not math.isfinite(exp):
             return None
         if datetime.now(timezone.utc).timestamp() >= exp:
             return None
