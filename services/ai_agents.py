@@ -32,7 +32,7 @@ def _number(value: Any) -> float:
         return 0.0
 
 
-def _collect_context(db: Session) -> dict[str, Any]:
+def _collect_context(db: Session, include_orders: bool = True) -> dict[str, Any]:
     metadata = MetaData()
     bind = db.get_bind()
     available_tables = set(inspect(bind).get_table_names())
@@ -40,7 +40,7 @@ def _collect_context(db: Session) -> dict[str, Any]:
         name
         for name in (
             "products",
-            "orders",
+            *(["orders"] if include_orders else []),
             "product_statuses",
             "order_statuses",
             "payment_statuses",
@@ -81,7 +81,7 @@ def _collect_context(db: Session) -> dict[str, Any]:
             })
 
     orders_data = []
-    if "orders" in metadata.tables:
+    if include_orders and "orders" in metadata.tables:
         table = metadata.tables["orders"]
         statement = select(table).order_by(table.c.id.desc()).limit(1000)
         for row in db.execute(statement).mappings():
@@ -185,7 +185,9 @@ def _fallback(agent: str, question: str, context: dict[str, Any]) -> str:
 def run_agent(agent: str, question: str, db: Session) -> dict[str, Any]:
     if agent not in AGENT_PROMPTS:
         raise ValueError("Unknown AI agent.")
-    context = _collect_context(db)
+    # Only business intelligence needs order records. Do not send customer/order
+    # data to the external model for public product discovery or marketing drafts.
+    context = _collect_context(db, include_orders=(agent == "business_intelligence"))
     api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not api_key:
         return {
