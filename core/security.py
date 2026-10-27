@@ -167,14 +167,8 @@ def get_current_user(
 def get_current_admin(
     current_user=Depends(get_current_user),
 ):
-    from models.utils import UserRole
-
-    role_val = (
-        current_user.role.value
-        if hasattr(current_user.role, "value")
-        else str(current_user.role)
-    )
-    if role_val != UserRole.Admin.value:
+    role_val = getattr(getattr(current_user, "role", None), "name", "")
+    if str(role_val).strip().upper() != "ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required",
