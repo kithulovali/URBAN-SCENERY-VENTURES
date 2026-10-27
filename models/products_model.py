@@ -2,6 +2,7 @@ from sqlalchemy import DECIMAL, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from settings import Model
 from models.shared import Timestamp
+from models.utils import ProductStatus
 
 
 class Product(Model, Timestamp):
@@ -19,7 +20,6 @@ class Product(Model, Timestamp):
     @property
     def status(self) -> str:
         return self.product_status_record.name if self.product_status_record else getattr(self, "_status_name", "AVAILABLE")
-
     @status.setter
     def status(self, value: str) -> None:
         self._status_name = str(getattr(value, "value", value)).strip().upper()
