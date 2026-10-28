@@ -45,6 +45,7 @@ def process_whatsapp_payload(payload: dict, db: Session) -> int:
                 if not message_id or not sender or not text:
                     continue
 
+                logger.info("WhatsApp inbound text received (event_id=%s)", message_id)
                 event = PlatformWebhookEvent(
                     event_id=str(message_id),
                     platform="whatsapp",
@@ -53,23 +54,62 @@ def process_whatsapp_payload(payload: dict, db: Session) -> int:
                 db.add(event)
                 try:
                     db.commit()
+                    event_id = event.id
                 except IntegrityError:
                     db.rollback()
-                    # Duplicate delivery: do not send a second customer reply.
-                    continue
+                    # Skip sent/in-progress duplicates, but permit retry after a prior failure.
+                    existing = (
+                        db.query(PlatformWebhookEvent)
+                        .filter(PlatformWebhookEvent.event_id == str(message_id))
+                        .first()
+                    )
+                    if existing is None or existing.status != "failed":
+                        logger.info(
+                            "WhatsApp duplicate skipped (event_id=%s, status=%s)",
+                            message_id,
+                            existing.status if existing else "unknown",
+                        )
+                        continue
+                    existing.status = "processing"
+                    db.commit()
+                    event_id = existing.id
 
-                event_id = event.id
                 try:
-                    answer = run_agent("customer_shopping_assistant", text, db)["answer"]
-                    send_whatsapp_text(str(sender), answer[:4000])
-                    event.status = "sent"
+                    logger.info("WhatsApp customer-assistant started (event_id=%s)", message_id)
+                    result = run_agent("customer_shopping_assistant", text, db)
+                    answer = str(result.get("answer", "")).strip()
+                    if not answer:
+                        raise RuntimeError("Customer-shopping agent returned an empty answer")
+                    logger.info(
+                        "WhatsApp customer-assistant generated response (event_id=%s, model=%s)",
+                        message_id,
+                        result.get("model", "unknown"),
+                    )
+                    send_result = send_whatsapp_text(str(sender), answer[:4000])
+                    provider_messages = send_result.get("messages") or []
+                    provider_id = (
+                        provider_messages[0].get("id")
+                        if provider_messages and isinstance(provider_messages[0], dict)
+                        else None
+                    )
+                    event = db.get(PlatformWebhookEvent, event_id)
+                    if event is not None:
+                        event.status = "sent"
                     db.commit()
                     processed += 1
+                    logger.info(
+                        "WhatsApp reply accepted by Meta (event_id=%s, provider_message_id=%s)",
+                        message_id,
+                        provider_id or "missing",
+                    )
                 except Exception:
                     db.rollback()
-                    logger.exception("WhatsApp customer-assistant reply failed (event_id=%s)", message_id)
+                    logger.exception(
+                        "WhatsApp customer-assistant reply failed (event_id=%s)", message_id
+                    )
                     failed = db.get(PlatformWebhookEvent, event_id)
                     if failed is not None:
                         failed.status = "failed"
                         db.commit()
+
     return processed
