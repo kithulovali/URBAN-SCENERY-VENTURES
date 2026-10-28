@@ -188,11 +188,19 @@ def verify_whatsapp_webhook(
 @router.post("/webhooks/whatsapp")
 async def receive_whatsapp_webhook(request: Request):
     """Verify Meta's signature and pass unique inbound text messages to the shopping assistant."""
+    # Log receipt before any validation so rejected deliveries are observable.
+    # Never log the body, signature, sender, or message text.
     raw_body = await request.body()
     signature = request.headers.get("X-Hub-Signature-256", "")
+    logger.info(
+        "WhatsApp webhook request received (bytes=%s, signature_present=%s)",
+        len(raw_body),
+        bool(signature),
+    )
     try:
         verify_whatsapp_signature(raw_body, signature)
     except ValueError as exc:
+        logger.warning("WhatsApp webhook signature rejected (reason=%s)", str(exc))
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     try:
         payload = json.loads(raw_body)
