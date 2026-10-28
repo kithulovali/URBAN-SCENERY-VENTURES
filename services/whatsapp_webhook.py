@@ -19,12 +19,20 @@ def verify_whatsapp_signature(raw_body: bytes, signature: str) -> None:
     app_secret = os.getenv("WHATSAPP_APP_SECRET", "").strip()
     if not app_secret:
         raise ValueError("WhatsApp webhook signature verification is not configured")
-    if not signature.startswith("sha256="):
+    if not signature:
         raise ValueError("Missing or invalid webhook signature")
-    expected = "sha256=" + hmac.new(
+    prefix, separator, digest = signature.partition("=")
+    if (
+        prefix != "sha256"
+        or separator != "="
+        or len(digest) != hashlib.sha256().digest_size * 2
+        or any(char not in "0123456789abcdefABCDEF" for char in digest)
+    ):
+        raise ValueError("Missing or invalid webhook signature")
+    expected = hmac.new(
         app_secret.encode("utf-8"), raw_body, hashlib.sha256
     ).hexdigest()
-    if not hmac.compare_digest(expected, signature):
+    if not hmac.compare_digest(expected, digest.lower()):
         raise ValueError("Invalid webhook signature")
 
 
