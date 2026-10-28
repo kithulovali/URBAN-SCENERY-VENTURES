@@ -24,6 +24,7 @@ All outbound actions below require an administrator JWT and an explicit `approve
 | `POST /api/v1/platforms/facebook/publish` | Publish a text post to a Facebook Page | Requires a valid Page token and publishing permissions |
 | `POST /api/v1/platforms/instagram/publish-image` | Publish an image and caption | Image URL must be publicly accessible and satisfy Instagram requirements |
 | `POST /api/v1/platforms/tiktok/publish-video` | Submit a video URL for TikTok publishing | Requires the approved Content Posting API scope and a verified media URL domain |
+| `POST /api/v1/platforms/campaign/publish` | Publish one approved campaign to selected Facebook, Instagram, and/or TikTok channels | Requires channel-specific media, permissions, and explicit administrator approval |
 | `POST /api/v1/ai/agents/image-studio/render` | Generate a product image preview | Returns base64 image data; no permanent media hosting is configured |
 
 ## Request examples
