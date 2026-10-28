@@ -1,5 +1,11 @@
 """Admin-controlled endpoints for outbound platform actions."""
-from fastapi import APIRouter, Depends, HTTPException, status
+import json
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
+from fastapi.responses import PlainTextResponse
+from starlette.concurrency import run_in_threadpool
+from sqlalchemy.orm import Session
+from settings import get_db
+from services.whatsapp_webhook import verify_whatsapp_signature, process_whatsapp_payload
 from pydantic import BaseModel, Field, HttpUrl
 from typing import Literal
 from sqlalchemy.orm import Session
@@ -154,3 +160,36 @@ def publish_campaign(payload: MultiPlatformCampaign):
     else:
         overall = "failed"
     return {"status": overall, "approved": True, "outcomes": outcomes}
+
+
+
+@router.get("/webhooks/whatsapp", response_class=PlainTextResponse)
+def verify_whatsapp_webhook(
+    mode: str | None = Query(None, alias="hub.mode"),
+    token: str | None = Query(None, alias="hub.verify_token"),
+    challenge: str | None = Query(None, alias="hub.challenge"),
+):
+    """Meta webhook subscription verification endpoint."""
+    import os
+
+    expected = os.getenv("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "").strip()
+    if mode == "subscribe" and expected and token and token == expected and challenge:
+        return challenge
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Webhook verification failed")
+
+
+@router.post("/webhooks/whatsapp")
+async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
+    """Verify Meta's signature and pass unique inbound text messages to the shopping assistant."""
+    raw_body = await request.body()
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    try:
+        verify_whatsapp_signature(raw_body, signature)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    try:
+        payload = json.loads(raw_body)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON webhook payload") from exc
+    processed = await run_in_threadpool(process_whatsapp_payload, payload, db)
+    return {"status": "accepted", "processed_messages": processed}

@@ -19,6 +19,7 @@ def platform_status() -> dict[str, dict[str, Any]]:
         "whatsapp": {
             "configured": bool(_env("WHATSAPP_ACCESS_TOKEN") and _env("WHATSAPP_PHONE_NUMBER_ID") and graph_version),
             "required_env": ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "META_GRAPH_API_VERSION"],
+            "webhook_configured": bool(_env("WHATSAPP_APP_SECRET") and _env("WHATSAPP_WEBHOOK_VERIFY_TOKEN")),
         },
         "facebook": {
             "configured": bool(_env("FACEBOOK_PAGE_ID") and _env("FACEBOOK_PAGE_ACCESS_TOKEN") and graph_version),
