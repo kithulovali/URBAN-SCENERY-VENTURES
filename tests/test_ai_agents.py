@@ -119,3 +119,43 @@ def test_gemini_failure_returns_fallback_and_warning(session, monkeypatch):
         "Gemini could not complete the request; deterministic fallback used."
     )
     assert result["data_summary"]["orders_loaded"] == 0
+
+
+
+def test_agent_prompts_are_loaded_from_markdown_files():
+    import services.ai_agents as ai_agents
+
+    expected_files = {
+        "business_intelligence": "business_intelligence.md",
+        "product_discovery": "product_discovery.md",
+        "marketing_content": "marketing_content.md",
+    }
+    assert ai_agents.AGENT_PROMPT_FILES == expected_files
+    for agent, filename in expected_files.items():
+        prompt_path = ai_agents.PROMPT_DIR / filename
+        assert prompt_path.is_file()
+        assert ai_agents._load_agent_prompt(agent).startswith("# ")
+        assert ai_agents._load_agent_prompt(agent)
+
+
+def test_marketing_agent_includes_markdown_instructions_in_gemini_prompt(
+    session, monkeypatch
+):
+    import services.ai_agents as ai_agents
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    captured = {}
+
+    def capture_prompt(api_key, model, prompt):
+        captured["prompt"] = prompt
+        return "Draft response."
+
+    monkeypatch.setattr(ai_agents, "_generate_with_gemini", capture_prompt)
+    result = run_agent("marketing_content", "Draft a product caption", session)
+
+    assert result["model"] == "gemini-2.5-flash"
+    assert result["answer"] == "Draft response."
+    assert "# Marketing and Content Agent" in captured["prompt"]
+    assert "Do not invent product features" in captured["prompt"]
+    assert "Produce draft content only" in captured["prompt"]
