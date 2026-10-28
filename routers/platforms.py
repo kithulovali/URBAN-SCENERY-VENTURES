@@ -1,6 +1,7 @@
 """Admin-controlled endpoints for outbound platform actions."""
 import hmac
 import json
+import logging
 import os
 from typing import Literal
 
@@ -20,6 +21,8 @@ from services.platform_integrations import (
     publish_instagram_image,
     publish_tiktok_video,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/platforms", tags=["Platform Integrations"])
 
@@ -195,9 +198,26 @@ async def receive_whatsapp_webhook(request: Request):
         payload = json.loads(raw_body)
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON webhook payload") from exc
+    entries = payload.get("entry", []) if isinstance(payload, dict) else []
+    changes_count = sum(
+        len(entry.get("changes", []))
+        for entry in entries
+        if isinstance(entry, dict) and isinstance(entry.get("changes", []), list)
+    )
+    logger.info(
+        "WhatsApp webhook payload accepted (entries=%s, changes=%s)",
+        len(entries) if isinstance(entries, list) else 0,
+        changes_count,
+    )
+
     def process_with_own_session() -> int:
         with sessionlocal() as db:
             return process_whatsapp_payload(payload, db)
 
-    processed = await run_in_threadpool(process_with_own_session)
+    try:
+        processed = await run_in_threadpool(process_with_own_session)
+    except Exception:
+        logger.exception("WhatsApp webhook payload processing failed")
+        raise
+    logger.info("WhatsApp webhook processing finished (processed_messages=%s)", processed)
     return {"status": "accepted", "processed_messages": processed}
