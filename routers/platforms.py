@@ -1,6 +1,7 @@
 """Admin-controlled endpoints for outbound platform actions."""
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, HttpUrl
+from typing import Literal
 from sqlalchemy.orm import Session
 
 from core.security import get_current_admin
@@ -37,6 +38,18 @@ class TikTokVideoPost(ApprovedAction):
     video_url: HttpUrl
     caption: str = Field("", max_length=2200)
     privacy_level: str = Field(..., pattern="^(PUBLIC_TO_EVERYONE|MUTUAL_FOLLOW_FRIENDS|FOLLOWER_OF_CREATOR|SELF_ONLY)$")
+
+
+
+class MultiPlatformCampaign(ApprovedAction):
+    platforms: list[Literal["facebook", "instagram", "tiktok"]] = Field(..., min_length=1)
+    caption: str = Field(..., min_length=1, max_length=2200)
+    image_url: HttpUrl | None = None
+    video_url: HttpUrl | None = None
+    privacy_level: str | None = Field(
+        None,
+        pattern="^(PUBLIC_TO_EVERYONE|MUTUAL_FOLLOW_FRIENDS|FOLLOWER_OF_CREATOR|SELF_ONLY)$",
+    )
 
 
 def _require_approval(approved: bool) -> None:
@@ -99,3 +112,45 @@ def tiktok_publish(payload: TikTokVideoPost):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+
+@router.post("/campaign/publish", dependencies=[Depends(get_current_admin)])
+def publish_campaign(payload: MultiPlatformCampaign):
+    """Publish one approved campaign to selected social channels and report per-channel outcomes."""
+    _require_approval(payload.approved)
+    outcomes = {}
+    for platform in dict.fromkeys(payload.platforms):
+        try:
+            if platform == "facebook":
+                result = publish_facebook_post(payload.caption)
+                outcomes[platform] = {"status": "published", "provider_id": result.get("id")}
+            elif platform == "instagram":
+                if not payload.image_url:
+                    outcomes[platform] = {"status": "skipped", "reason": "image_url is required"}
+                    continue
+                result = publish_instagram_image(str(payload.image_url), payload.caption)
+                outcomes[platform] = {"status": "published", "provider_id": result.get("id")}
+            elif platform == "tiktok":
+                if not payload.video_url or not payload.privacy_level:
+                    outcomes[platform] = {
+                        "status": "skipped",
+                        "reason": "video_url and privacy_level are required",
+                    }
+                    continue
+                result = publish_tiktok_video(
+                    str(payload.video_url), payload.caption, payload.privacy_level
+                )
+                outcomes[platform] = result
+        except ValueError as exc:
+            outcomes[platform] = {"status": "failed", "reason": str(exc)}
+        except RuntimeError as exc:
+            outcomes[platform] = {"status": "failed", "reason": str(exc)}
+    statuses = [item.get("status") for item in outcomes.values()]
+    if statuses and all(value in {"published", "submitted_for_processing"} for value in statuses):
+        overall = "completed"
+    elif any(value in {"published", "submitted_for_processing"} for value in statuses):
+        overall = "partial_failure"
+    else:
+        overall = "failed"
+    return {"status": overall, "approved": True, "outcomes": outcomes}
