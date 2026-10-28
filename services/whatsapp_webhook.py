@@ -33,6 +33,7 @@ def process_whatsapp_payload(payload: dict, db: Session) -> int:
     from services.ai_agents import run_agent
 
     processed = 0
+    failures = 0
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
             value = change.get("value", {})
@@ -103,13 +104,28 @@ def process_whatsapp_payload(payload: dict, db: Session) -> int:
                         provider_id or "missing",
                     )
                 except Exception:
+                    failures += 1
                     db.rollback()
                     logger.exception(
                         "WhatsApp customer-assistant reply failed (event_id=%s)", message_id
                     )
-                    failed = db.get(PlatformWebhookEvent, event_id)
-                    if failed is not None:
-                        failed.status = "failed"
-                        db.commit()
+                    try:
+                        failed = db.get(PlatformWebhookEvent, event_id)
+                        if failed is not None:
+                            failed.status = "failed"
+                            db.commit()
+                    except Exception:
+                        db.rollback()
+                        logger.exception(
+                            "Could not persist failed WhatsApp event status (event_id=%s)",
+                            message_id,
+                        )
 
+    # Return a non-2xx webhook response if any reply failed. Meta can retry;
+    # successful messages are idempotently skipped and failed events are retryable.
+    if failures:
+        raise RuntimeError(
+            f"WhatsApp webhook processing failed for {failures} message(s); "
+            f"{processed} message(s) were sent successfully."
+        )
     return processed
