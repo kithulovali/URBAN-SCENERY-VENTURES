@@ -3,8 +3,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
 from fastapi.responses import PlainTextResponse
 from starlette.concurrency import run_in_threadpool
-from sqlalchemy.orm import Session
-from settings import get_db
+from settings import sessionlocal
 from services.whatsapp_webhook import verify_whatsapp_signature, process_whatsapp_payload
 from pydantic import BaseModel, Field, HttpUrl
 from typing import Literal
@@ -179,7 +178,7 @@ def verify_whatsapp_webhook(
 
 
 @router.post("/webhooks/whatsapp")
-async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
+async def receive_whatsapp_webhook(request: Request):
     """Verify Meta's signature and pass unique inbound text messages to the shopping assistant."""
     raw_body = await request.body()
     signature = request.headers.get("X-Hub-Signature-256", "")
@@ -191,5 +190,9 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
         payload = json.loads(raw_body)
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON webhook payload") from exc
-    processed = await run_in_threadpool(process_whatsapp_payload, payload, db)
+    def process_with_own_session() -> int:
+        with sessionlocal() as db:
+            return process_whatsapp_payload(payload, db)
+
+    processed = await run_in_threadpool(process_with_own_session)
     return {"status": "accepted", "processed_messages": processed}
