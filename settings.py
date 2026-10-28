@@ -19,7 +19,8 @@ if DATABASE_URL.startswith("libsql://"):
 
 connect_args = {}
 if DATABASE_URL.startswith("sqlite+libsql://"):
-    auth_token = os.getenv("TURSO_AUTH_TOKEN", "").strip()
+    # Tokens should contain no whitespace; remove accidental line breaks from env copies.
+    auth_token = "".join(os.getenv("TURSO_AUTH_TOKEN", "").split())
     if not auth_token:
         raise RuntimeError(
             "TURSO_AUTH_TOKEN is required when DATABASE_URL points to Turso"
