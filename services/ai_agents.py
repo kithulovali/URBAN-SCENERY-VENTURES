@@ -14,6 +14,9 @@ AGENT_PROMPT_FILES = {
     "business_intelligence": "business_intelligence.md",
     "product_discovery": "product_discovery.md",
     "marketing_content": "marketing_content.md",
+    "image_studio": "image_studio.md",
+    "customer_shopping_assistant": "customer_shopping_assistant.md",
+    "growth_optimization": "growth_optimization.md",
 }
 
 
@@ -174,6 +177,60 @@ def _fallback(agent: str, question: str, context: dict[str, Any]) -> str:
             if matches
             else "No clear matches in the available catalogue. Try a product type, feature, or budget."
         )
+    if agent == "image_studio":
+        terms = [t for t in question.lower().replace(",", " ").split() if len(t) > 2]
+        product = next(
+            (p for p in context["catalogue"]
+             if any(t in (p["name"] + " " + p["description"]).lower() for t in terms)),
+            None,
+        )
+        if product is None:
+            return (
+                "Image brief only; no image was generated. Identify a catalogue product by name "
+                "or ID. Use accurate product details, a clean background, clear product framing, "
+                "and no unverified accessories, labels, specifications, or brand marks."
+            )
+        return (
+            f"Product image brief for {product['name']}: create a clean, well-lit commercial "
+            f"product image using only verified catalogue information. Listed price: "
+            f"{product['price']:.2f}. Current quantity: {product['quantity']}. "
+            "Do not add unverified accessories, specifications, packaging, warranties, or logos. "
+            "This is an image-generation brief, not a generated image."
+        )
+    if agent == "customer_shopping_assistant":
+        terms = [t for t in question.lower().replace(",", " ").split() if len(t) > 2]
+        matches = [
+            p for p in context["catalogue"]
+            if p["quantity"] > 0 and p["status"] == "AVAILABLE"
+            and any(t in (p["name"] + " " + p["description"]).lower() for t in terms)
+        ][:5]
+        if not matches:
+            return (
+                "I could not identify a matching in-stock product from the catalogue. "
+                "Ask the customer for their budget, intended use, or preferred features. "
+                "Do not invent stock, specifications, delivery terms, or policies."
+            )
+        return (
+            "Catalogue-grounded shopping response:\n"
+            + "\n".join(
+                f"- {p['name']} | listed price {p['price']:.2f} | "
+                f"available quantity {p['quantity']} | {p['description']}"
+                for p in matches
+            )
+            + "\nConfirm the customer's budget and required features before recommending one."
+        )
+    if agent == "growth_optimization":
+        return (
+            "Initial growth recommendations based on the currently loaded records:\n"
+            f"- Catalogue products loaded: {s['catalogue_products']}.\n"
+            f"- Orders loaded: {s['orders_loaded']}.\n"
+            f"- Loaded order value (not verified revenue): {s['order_value_loaded']:.2f}.\n"
+            f"- Low-stock products (quantity <= 5): {len(s['low_stock_products_threshold_5'])}.\n"
+            "Prioritize accurate product listings, stock visibility, and tracking enquiries, "
+            "orders, and campaign outcomes. Do not claim predictive accuracy or causal uplift "
+            "without sufficient dated sales and campaign data. "
+            + s["data_note"]
+        )
     terms = [t for t in question.lower().split() if len(t) > 3]
     product = next(
         (
@@ -219,7 +276,9 @@ def run_agent(agent: str, question: str, db: Session) -> dict[str, Any]:
         raise ValueError("Unknown AI agent.")
     # Only business intelligence needs order records. Do not send customer/order
     # data to the external model for public product discovery or marketing drafts.
-    context = _collect_context(db, include_orders=(agent == "business_intelligence"))
+    context = _collect_context(
+        db, include_orders=(agent in {"business_intelligence", "growth_optimization"})
+    )
     api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not api_key:
         return {

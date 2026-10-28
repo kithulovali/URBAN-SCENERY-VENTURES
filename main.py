@@ -5,7 +5,7 @@ from core.config import settings
 from core.database import init_db
 from routers import (
     auth_router, users_router, products_router, orders_router,
-    payments_router, ai_router, agents_router,
+    payments_router, ai_router, agents_router, platforms_router,
 )
 
 @asynccontextmanager
@@ -25,7 +25,7 @@ app.add_middleware(
     CORSMiddleware, allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
-for router in (auth_router, users_router, products_router, orders_router, payments_router, ai_router, agents_router):
+for router in (auth_router, users_router, products_router, orders_router, payments_router, ai_router, agents_router, platforms_router):
     app.include_router(router, prefix=settings.API_V1_STR)
 
 @app.get("/", tags=["Health & Info"])
@@ -38,6 +38,7 @@ def root():
             "products": f"{settings.API_V1_STR}/products", "orders": f"{settings.API_V1_STR}/orders",
             "payments": f"{settings.API_V1_STR}/payments", "ai": f"{settings.API_V1_STR}/ai",
             "ai_agents": f"{settings.API_V1_STR}/ai/agents",
+            "platforms": f"{settings.API_V1_STR}/platforms",
         },
     }
 

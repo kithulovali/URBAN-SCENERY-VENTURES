@@ -9,6 +9,7 @@ from settings import get_db
 from core.security import get_current_admin
 from schemas.agent_schema import AgentRequest, AgentResponse
 from services.ai_agents import run_agent
+from services.image_generation import generate_image
 
 router = APIRouter(prefix="/ai/agents", tags=["AI Agents"])
 
@@ -65,3 +66,66 @@ def product_discovery(
 def marketing_content(payload: AgentRequest, db: Session = Depends(get_db)):
     """Marketing drafts are an internal tool and require an administrator."""
     return run_agent("marketing_content", payload.question, db)
+
+
+
+@router.post(
+    "/image-studio",
+    response_model=AgentResponse,
+    dependencies=[Depends(get_current_admin)],
+)
+def image_studio(payload: AgentRequest, db: Session = Depends(get_db)):
+    """Generate a catalogue-grounded image brief; actual rendering needs an image provider."""
+    return run_agent("image_studio", payload.question, db)
+
+
+@router.post("/customer-shopping-assistant", response_model=AgentResponse)
+def customer_shopping_assistant(
+    payload: AgentRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Answer shopping questions from available catalogue data; never invent product facts."""
+    client_ip = request.client.host if request.client else "unknown"
+    _enforce_discovery_limit(client_ip)
+    return run_agent("customer_shopping_assistant", payload.question, db)
+
+
+@router.post(
+    "/growth-optimization",
+    response_model=AgentResponse,
+    dependencies=[Depends(get_current_admin)],
+)
+def growth_optimization(payload: AgentRequest, db: Session = Depends(get_db)):
+    """Provide cautious growth recommendations grounded in loaded business records."""
+    return run_agent("growth_optimization", payload.question, db)
+
+
+
+@router.post(
+    "/image-studio/render",
+    dependencies=[Depends(get_current_admin)],
+)
+def image_studio_render(payload: AgentRequest, db: Session = Depends(get_db)):
+    """Generate a product image and return it as base64 for client-side preview."""
+    brief = run_agent("image_studio", payload.question, db)
+    if "no image was generated" in brief["answer"].lower() or "identify a catalogue product" in brief["answer"].lower():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=brief["answer"],
+        )
+    try:
+        rendered = generate_image(brief["answer"])
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return {
+        "agent": "image_studio",
+        "model": rendered["model"],
+        "prompt": brief["answer"],
+        "mime_type": rendered["mime_type"],
+        "image_base64": rendered["image_base64"],
+        "warning": "AI-generated product imagery must be checked against the real item before publication.",
+        "data_summary": brief["data_summary"],
+    }
