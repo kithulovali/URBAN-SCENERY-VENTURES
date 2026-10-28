@@ -1,13 +1,16 @@
 """Admin-controlled endpoints for outbound platform actions."""
+import hmac
 import json
+import os
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field, HttpUrl
 from starlette.concurrency import run_in_threadpool
+
 from settings import sessionlocal
 from services.whatsapp_webhook import verify_whatsapp_signature, process_whatsapp_payload
-from pydantic import BaseModel, Field, HttpUrl
-from typing import Literal
-from sqlalchemy.orm import Session
 
 from core.security import get_current_admin
 from services.platform_integrations import (
@@ -76,7 +79,9 @@ def whatsapp_message(payload: WhatsAppMessage):
     _require_approval(payload.approved)
     try:
         result = send_whatsapp_text(payload.to, payload.message)
-        return {"platform": "whatsapp", "status": "accepted_by_provider", "provider_id": result.get("messages", [{}])[0].get("id")}
+        messages = result.get("messages") or []
+        provider_id = messages[0].get("id") if messages and isinstance(messages[0], dict) else None
+        return {"platform": "whatsapp", "status": "accepted_by_provider", "provider_id": provider_id}
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -152,8 +157,10 @@ def publish_campaign(payload: MultiPlatformCampaign):
         except RuntimeError as exc:
             outcomes[platform] = {"status": "failed", "reason": str(exc)}
     statuses = [item.get("status") for item in outcomes.values()]
-    if statuses and all(value in {"published", "submitted_for_processing"} for value in statuses):
+    if statuses and all(value == "published" for value in statuses):
         overall = "completed"
+    elif statuses and all(value in {"published", "submitted_for_processing"} for value in statuses):
+        overall = "submitted_for_processing"
     elif any(value in {"published", "submitted_for_processing"} for value in statuses):
         overall = "partial_failure"
     else:
@@ -169,10 +176,8 @@ def verify_whatsapp_webhook(
     challenge: str | None = Query(None, alias="hub.challenge"),
 ):
     """Meta webhook subscription verification endpoint."""
-    import os
-
     expected = os.getenv("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "").strip()
-    if mode == "subscribe" and expected and token and token == expected and challenge:
+    if mode == "subscribe" and expected and token and hmac.compare_digest(token, expected) and challenge:
         return challenge
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Webhook verification failed")
 
