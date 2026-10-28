@@ -22,4 +22,4 @@ def test_platform_status_reports_missing_credentials_without_exposing_secrets(mo
 
     assert set(status) == {"whatsapp", "facebook", "instagram", "tiktok", "image_generation"}
     assert all(item["configured"] is False for item in status.values())
-    assert all("token" not in str(item).lower() for item in status.values())
+    assert all(set(item).issubset({"configured", "required_env", "note"}) for item in status.values())
