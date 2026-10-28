@@ -65,3 +65,36 @@ def product_discovery(
 def marketing_content(payload: AgentRequest, db: Session = Depends(get_db)):
     """Marketing drafts are an internal tool and require an administrator."""
     return run_agent("marketing_content", payload.question, db)
+
+
+
+@router.post(
+    "/image-studio",
+    response_model=AgentResponse,
+    dependencies=[Depends(get_current_admin)],
+)
+def image_studio(payload: AgentRequest, db: Session = Depends(get_db)):
+    """Generate a catalogue-grounded image brief; actual rendering needs an image provider."""
+    return run_agent("image_studio", payload.question, db)
+
+
+@router.post("/customer-shopping-assistant", response_model=AgentResponse)
+def customer_shopping_assistant(
+    payload: AgentRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Answer shopping questions from available catalogue data; never invent product facts."""
+    client_ip = request.client.host if request.client else "unknown"
+    _enforce_discovery_limit(client_ip)
+    return run_agent("customer_shopping_assistant", payload.question, db)
+
+
+@router.post(
+    "/growth-optimization",
+    response_model=AgentResponse,
+    dependencies=[Depends(get_current_admin)],
+)
+def growth_optimization(payload: AgentRequest, db: Session = Depends(get_db)):
+    """Provide cautious growth recommendations grounded in loaded business records."""
+    return run_agent("growth_optimization", payload.question, db)

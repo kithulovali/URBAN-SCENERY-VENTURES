@@ -129,6 +129,9 @@ def test_agent_prompts_are_loaded_from_markdown_files():
         "business_intelligence": "business_intelligence.md",
         "product_discovery": "product_discovery.md",
         "marketing_content": "marketing_content.md",
+        "image_studio": "image_studio.md",
+        "customer_shopping_assistant": "customer_shopping_assistant.md",
+        "growth_optimization": "growth_optimization.md",
     }
     assert ai_agents.AGENT_PROMPT_FILES == expected_files
     for agent, filename in expected_files.items():
@@ -159,3 +162,25 @@ def test_marketing_agent_includes_markdown_instructions_in_gemini_prompt(
     assert "# Marketing and Content Agent" in captured["prompt"]
     assert "Do not invent product features" in captured["prompt"]
     assert "Produce draft content only" in captured["prompt"]
+
+
+
+def test_new_agents_have_safe_deterministic_fallbacks(session, monkeypatch):
+    import services.ai_agents as ai_agents
+
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    image_result = run_agent("image_studio", "Create an image for a laptop", session)
+    shopping_result = run_agent(
+        "customer_shopping_assistant", "Recommend a laptop", session
+    )
+    growth_result = run_agent("growth_optimization", "How can sales grow?", session)
+
+    assert image_result["model"] == "deterministic-fallback"
+    assert "not a generated image" in image_result["answer"]
+    assert shopping_result["model"] == "deterministic-fallback"
+    assert "could not identify a matching" in shopping_result["answer"]
+    assert growth_result["model"] == "deterministic-fallback"
+    assert "not verified revenue" in growth_result["answer"]
+    assert ai_agents.AGENT_PROMPT_FILES["growth_optimization"] == "growth_optimization.md"
