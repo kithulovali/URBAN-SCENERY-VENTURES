@@ -178,7 +178,7 @@ def test_new_agents_have_safe_deterministic_fallbacks(session, monkeypatch):
     growth_result = run_agent("growth_optimization", "How can sales grow?", session)
 
     assert image_result["model"] == "deterministic-fallback"
-    assert "not a generated image" in image_result["answer"]
+    assert "no image was generated" in image_result["answer"]
     assert shopping_result["model"] == "deterministic-fallback"
     assert "could not identify a matching" in shopping_result["answer"]
     assert growth_result["model"] == "deterministic-fallback"
