@@ -8,6 +8,7 @@ Copy the relevant entries from `.env.example` into the local `.env` file or depl
 
 - `META_GRAPH_API_VERSION`: a Graph API version currently supported by the connected Meta app.
 - `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID`: WhatsApp Business Platform Cloud API credentials.
+- `WHATSAPP_APP_SECRET` and `WHATSAPP_WEBHOOK_VERIFY_TOKEN`: signature verification and subscription verification for inbound WhatsApp webhooks.
 - `FACEBOOK_PAGE_ID` and `FACEBOOK_PAGE_ACCESS_TOKEN`: Facebook Page credentials with permission to publish Page posts.
 - `INSTAGRAM_BUSINESS_ACCOUNT_ID` and `META_GRAPH_ACCESS_TOKEN`: Instagram professional-account publishing credentials and the required publishing permission.
 - `TIKTOK_ACCESS_TOKEN` and `TIKTOK_OPEN_ID`: TikTok user authorization and Content Posting API access.
@@ -20,6 +21,8 @@ All outbound actions below require an administrator JWT and an explicit `approve
 | Endpoint | Purpose | Important constraint |
 |---|---|---|
 | `GET /api/v1/platforms/status` | Show credential configuration state | Does not test credentials against providers |
+| `GET /api/v1/platforms/webhooks/whatsapp` | Verify the webhook subscription with Meta | Requires the configured verify token |
+| `POST /api/v1/platforms/webhooks/whatsapp` | Receive WhatsApp messages and reply through the shopping assistant | Verifies the Meta signature and deduplicates message IDs in the database |
 | `POST /api/v1/platforms/whatsapp/messages` | Send a WhatsApp text message | Recipient must be eligible under WhatsApp messaging rules |
 | `POST /api/v1/platforms/facebook/publish` | Publish a text post to a Facebook Page | Requires a valid Page token and publishing permissions |
 | `POST /api/v1/platforms/instagram/publish-image` | Publish an image and caption | Image URL must be publicly accessible and satisfy Instagram requirements |
@@ -70,6 +73,10 @@ TikTok:
 ```
 
 The TikTok endpoint queries the creator's available privacy options before submitting the video. A returned publishing ID means the request was submitted for processing, not that the post is already public. TikTok notes that unaudited clients can be restricted to private posts.
+
+## WhatsApp webhook setup
+
+Configure the public callback URL as `https://YOUR_API_HOST/api/v1/platforms/webhooks/whatsapp` in the Meta developer dashboard and subscribe to the WhatsApp `messages` webhook field. Set a random `WHATSAPP_WEBHOOK_VERIFY_TOKEN` and the Meta app secret in the server environment. The webhook rejects requests unless the signature can be verified. Test with a development phone number before using a business number.
 
 ## Research and operational limitations
 
