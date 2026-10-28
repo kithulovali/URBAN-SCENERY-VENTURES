@@ -6,13 +6,18 @@ import math
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
+
 from core.config import settings
 from settings import get_db
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login", auto_error=False)
+# The login endpoint accepts JSON credentials rather than OAuth2 form data.
+# HTTPBearer keeps Swagger's Authorize dialog aligned with that API contract:
+# users log in at /auth/login, then paste the returned access token here.
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 # --- Password Hashing (PBKDF2-HMAC-SHA256) ---
@@ -116,16 +121,16 @@ def decode_access_token(token: str) -> Optional[dict]:
 
 # --- FastAPI Auth Dependencies ---
 def get_current_user_optional(
-    token: Optional[str] = Depends(oauth2_scheme),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ):
     from models.users_model import User
     from uuid import UUID
 
-    if not token:
+    if not credentials:
         return None
 
-    payload = decode_access_token(token)
+    payload = decode_access_token(credentials.credentials)
     if not payload:
         return None
 
@@ -141,7 +146,7 @@ def get_current_user_optional(
 
 
 def get_current_user(
-    token: Optional[str] = Depends(oauth2_scheme),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ):
     from models.users_model import User
@@ -152,10 +157,10 @@ def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    if not token:
+    if not credentials:
         raise credentials_exception
 
-    payload = decode_access_token(token)
+    payload = decode_access_token(credentials.credentials)
     if not payload:
         raise credentials_exception
 
