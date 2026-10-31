@@ -217,13 +217,13 @@ def _fallback(agent: str, question: str, context: dict[str, Any]) -> str:
                 "Would you like me to share a few details or help you compare it with "
                 "another option?"
             )
-        options = "\\n".join(
+        options = "\n".join(
             f"- {p['name']} — {p['price']:.2f}"
             for p in matches
         )
         return (
             "I found a few options that may suit what you're looking for:\\n"
-            f"{options}\\n"
+            f"{options}\n"
             "Is there a particular feature or budget you'd like me to narrow these down by?"
         )
     if agent == "growth_optimization":
