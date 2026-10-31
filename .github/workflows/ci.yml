@@ -2,7 +2,7 @@ name: Python CI
 
 on:
   push:
-    branches: [main, feature/integrated-ai-agents]
+    branches: [main, feature/integrated-ai-agents, fix/bearer-auth-swagger]
   pull_request:
     branches: [main]
 
