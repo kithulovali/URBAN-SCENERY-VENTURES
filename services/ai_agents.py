@@ -287,10 +287,17 @@ def run_agent(agent: str, question: str, db: Session, conversation_history: list
         db, include_orders=(agent in {"business_intelligence", "growth_optimization"})
     )
     api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    fallback_question = question
+    if agent == "customer_shopping_assistant" and conversation_history:
+        prior_customer_messages = [
+            str(item.get("content", "")) for item in conversation_history[-6:]
+            if item.get("role") == "customer"
+        ]
+        fallback_question = " ".join(prior_customer_messages + [question])
     if not api_key:
         return {
             "agent": agent,
-            "answer": _fallback(agent, question, context),
+            "answer": _fallback(agent, fallback_question, context),
             "model": "deterministic-fallback",
             "data_summary": context["summary"],
         }
@@ -327,7 +334,7 @@ def run_agent(agent: str, question: str, db: Session, conversation_history: list
         )
         return {
             "agent": agent,
-            "answer": _fallback(agent, question, context),
+            "answer": _fallback(agent, fallback_question, context),
             "model": "deterministic-fallback",
             "warning": "Gemini could not complete the request; deterministic fallback used.",
             "data_summary": context["summary"],
