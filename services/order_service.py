@@ -98,6 +98,8 @@ def update_order(order_id: int, updates: dict[str, object], session: Session) ->
             new_status = str(requested_status).strip().upper()
             old_status = order.order_status
             if new_status == "CANCELLED" and old_status != "CANCELLED":
+                if order.payment_status == "PAID":
+                    raise ValueError("Paid orders require a verified refund before cancellation")
                 product = order.product
                 if product is not None:
                     product.quantity += order.quantity
