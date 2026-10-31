@@ -1,11 +1,14 @@
 """Admin-controlled endpoints for outbound platform actions."""
 import hmac
 import json
+import logging
 import os
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import func
+from models.whatsapp_conversation_model import WhatsAppConversationMessage
 from pydantic import BaseModel, Field, HttpUrl
 from starlette.concurrency import run_in_threadpool
 
@@ -20,6 +23,8 @@ from services.platform_integrations import (
     publish_instagram_image,
     publish_tiktok_video,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/platforms", tags=["Platform Integrations"])
 
@@ -169,6 +174,42 @@ def publish_campaign(payload: MultiPlatformCampaign):
 
 
 
+@router.get("/whatsapp/conversations/summary", dependencies=[Depends(get_current_admin)])
+def whatsapp_conversation_summary():
+    """Return aggregate support activity without exposing customer numbers or message text."""
+    from settings import sessionlocal
+
+    with sessionlocal() as db:
+        rows = db.query(
+            WhatsAppConversationMessage.direction,
+            WhatsAppConversationMessage.delivery_status,
+            func.count(WhatsAppConversationMessage.id),
+        ).group_by(
+            WhatsAppConversationMessage.direction,
+            WhatsAppConversationMessage.delivery_status,
+        ).all()
+        conversations = db.query(
+            func.count(func.distinct(WhatsAppConversationMessage.conversation_key))
+        ).scalar() or 0
+        total_messages = db.query(
+            func.count(WhatsAppConversationMessage.id)
+        ).scalar() or 0
+    breakdown = {
+        direction: {
+            delivery_status: count
+            for row_direction, delivery_status, count in rows
+            if row_direction == direction
+        }
+        for direction in ("inbound", "outbound")
+    }
+    return {
+        "unique_conversations": conversations,
+        "total_messages": total_messages,
+        "message_breakdown": breakdown,
+        "privacy": "Customer phone numbers and message contents are not returned.",
+    }
+
+
 @router.get("/webhooks/whatsapp", response_class=PlainTextResponse)
 def verify_whatsapp_webhook(
     mode: str | None = Query(None, alias="hub.mode"),
@@ -185,19 +226,44 @@ def verify_whatsapp_webhook(
 @router.post("/webhooks/whatsapp")
 async def receive_whatsapp_webhook(request: Request):
     """Verify Meta's signature and pass unique inbound text messages to the shopping assistant."""
+    # Log receipt before any validation so rejected deliveries are observable.
+    # Never log the body, signature, sender, or message text.
     raw_body = await request.body()
     signature = request.headers.get("X-Hub-Signature-256", "")
+    logger.info(
+        "WhatsApp webhook request received (bytes=%s, signature_present=%s)",
+        len(raw_body),
+        bool(signature),
+    )
     try:
         verify_whatsapp_signature(raw_body, signature)
     except ValueError as exc:
+        logger.warning("WhatsApp webhook signature rejected (reason=%s)", str(exc))
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     try:
         payload = json.loads(raw_body)
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON webhook payload") from exc
+    entries = payload.get("entry", []) if isinstance(payload, dict) else []
+    changes_count = sum(
+        len(entry.get("changes", []))
+        for entry in entries
+        if isinstance(entry, dict) and isinstance(entry.get("changes", []), list)
+    )
+    logger.info(
+        "WhatsApp webhook payload accepted (entries=%s, changes=%s)",
+        len(entries) if isinstance(entries, list) else 0,
+        changes_count,
+    )
+
     def process_with_own_session() -> int:
         with sessionlocal() as db:
             return process_whatsapp_payload(payload, db)
 
-    processed = await run_in_threadpool(process_with_own_session)
+    try:
+        processed = await run_in_threadpool(process_with_own_session)
+    except Exception:
+        logger.exception("WhatsApp webhook payload processing failed")
+        raise
+    logger.info("WhatsApp webhook processing finished (processed_messages=%s)", processed)
     return {"status": "accepted", "processed_messages": processed}
