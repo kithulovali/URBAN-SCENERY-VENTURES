@@ -7,6 +7,8 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import func
+from models.whatsapp_conversation_model import WhatsAppConversationMessage
 from pydantic import BaseModel, Field, HttpUrl
 from starlette.concurrency import run_in_threadpool
 
@@ -170,6 +172,42 @@ def publish_campaign(payload: MultiPlatformCampaign):
         overall = "failed"
     return {"status": overall, "approved": True, "outcomes": outcomes}
 
+
+
+@router.get("/whatsapp/conversations/summary", dependencies=[Depends(get_current_admin)])
+def whatsapp_conversation_summary():
+    """Return aggregate support activity without exposing customer numbers or message text."""
+    from settings import sessionlocal
+
+    with sessionlocal() as db:
+        rows = db.query(
+            WhatsAppConversationMessage.direction,
+            WhatsAppConversationMessage.delivery_status,
+            func.count(WhatsAppConversationMessage.id),
+        ).group_by(
+            WhatsAppConversationMessage.direction,
+            WhatsAppConversationMessage.delivery_status,
+        ).all()
+        conversations = db.query(
+            func.count(func.distinct(WhatsAppConversationMessage.conversation_key))
+        ).scalar() or 0
+        total_messages = db.query(
+            func.count(WhatsAppConversationMessage.id)
+        ).scalar() or 0
+    breakdown = {
+        direction: {
+            delivery_status: count
+            for row_direction, delivery_status, count in rows
+            if row_direction == direction
+        }
+        for direction in ("inbound", "outbound")
+    }
+    return {
+        "unique_conversations": conversations,
+        "total_messages": total_messages,
+        "message_breakdown": breakdown,
+        "privacy": "Customer phone numbers and message contents are not returned.",
+    }
 
 
 @router.get("/webhooks/whatsapp", response_class=PlainTextResponse)
