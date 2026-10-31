@@ -206,18 +206,25 @@ def _fallback(agent: str, question: str, context: dict[str, Any]) -> str:
         ][:5]
         if not matches:
             return (
-                "I could not identify a matching in-stock product from the catalogue. "
-                "Ask the customer for their budget, intended use, or preferred features. "
-                "Do not invent stock, specifications, delivery terms, or policies."
+                "I can help you find something suitable. I don't see a clear match in the "
+                "products currently available, though. What is your budget, or what would "
+                "you mainly like the product to do?"
             )
+        if len(matches) == 1:
+            product = matches[0]
+            return (
+                f"We do have {product['name']} available at {product['price']:.2f}. "
+                "Would you like me to share a few details or help you compare it with "
+                "another option?"
+            )
+        options = "\\n".join(
+            f"- {p['name']} — {p['price']:.2f}"
+            for p in matches
+        )
         return (
-            "Catalogue-grounded shopping response:\n"
-            + "\n".join(
-                f"- {p['name']} | listed price {p['price']:.2f} | "
-                f"available quantity {p['quantity']} | {p['description']}"
-                for p in matches
-            )
-            + "\nConfirm the customer's budget and required features before recommending one."
+            "I found a few options that may suit what you're looking for:\\n"
+            f"{options}\\n"
+            "Is there a particular feature or budget you'd like me to narrow these down by?"
         )
     if agent == "growth_optimization":
         return (
