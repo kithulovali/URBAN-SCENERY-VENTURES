@@ -138,3 +138,44 @@ def test_failed_agent_is_not_acknowledged_as_success(session, monkeypatch):
         event_id="wamid.synthetic-failure"
     ).one()
     assert event.status == "failed"
+
+
+def test_conversation_history_is_reused_and_phone_number_is_not_stored(session, monkeypatch):
+    import services.ai_agents as ai_agents
+    import services.whatsapp_webhook as webhook
+    from models.whatsapp_conversation_model import WhatsAppConversationMessage
+
+    monkeypatch.setenv("WHATSAPP_APP_SECRET", "synthetic-conversation-key")
+    captured = []
+    monkeypatch.setattr(
+        ai_agents, "run_agent",
+        lambda agent, question, db, conversation_history=None: (
+            captured.append((question, conversation_history or []))
+            or {"answer": "I can help with that.", "model": "test-model"}
+        ),
+    )
+    monkeypatch.setattr(
+        webhook, "send_whatsapp_text",
+        lambda recipient, message: {"messages": [{"id": "out-" + str(len(captured))}]},
+    )
+
+    def payload(message_id, body):
+        return {"entry": [{"changes": [{"value": {"messages": [{
+            "id": message_id, "from": "256700000000",
+            "type": "text", "text": {"body": body},
+        }]}}]}]}
+
+    assert process_whatsapp_payload(payload("in-1", "I need a laptop"), session) == 1
+    assert process_whatsapp_payload(payload("in-2", "My budget is 1 million"), session) == 1
+
+    assert captured[1][0] == "My budget is 1 million"
+    assert captured[1][1] == [
+        {"role": "customer", "content": "I need a laptop"},
+        {"role": "store", "content": "I can help with that."},
+    ]
+    rows = session.query(WhatsAppConversationMessage).order_by(
+        WhatsAppConversationMessage.id
+    ).all()
+    assert len(rows) == 4
+    assert all("256700000000" not in row.conversation_key for row in rows)
+    assert all(row.conversation_key == rows[0].conversation_key for row in rows)
