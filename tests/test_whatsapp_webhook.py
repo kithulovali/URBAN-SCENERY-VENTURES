@@ -46,11 +46,12 @@ def test_whatsapp_customer_assistant_deduplicates_provider_retries(session, monk
     import services.ai_agents as ai_agents
     import services.whatsapp_webhook as webhook
 
+    monkeypatch.setenv("WHATSAPP_APP_SECRET", "synthetic-conversation-key")
     replies = []
     monkeypatch.setattr(
         ai_agents,
         "run_agent",
-        lambda agent, question, db: {
+        lambda agent, question, db, conversation_history=None: {
             "agent": agent,
             "answer": "I can help you find an in-stock product.",
             "model": "test-model",
@@ -92,6 +93,7 @@ def test_whatsapp_customer_assistant_deduplicates_provider_retries(session, monk
     }]},
 ])
 def test_non_message_notifications_are_ignored(session, monkeypatch, payload):
+    monkeypatch.setenv("WHATSAPP_APP_SECRET", "synthetic-conversation-key")
     import services.ai_agents as ai_agents
     import services.whatsapp_webhook as webhook
 
@@ -107,6 +109,7 @@ def test_non_message_notifications_are_ignored(session, monkeypatch, payload):
 
 
 def test_failed_agent_is_not_acknowledged_as_success(session, monkeypatch):
+    monkeypatch.setenv("WHATSAPP_APP_SECRET", "synthetic-conversation-key")
     import services.ai_agents as ai_agents
     import services.whatsapp_webhook as webhook
     from models.platform_event_model import PlatformWebhookEvent
