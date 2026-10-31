@@ -228,3 +228,33 @@ def test_product_discovery_rate_limit_returns_429(client, session, monkeypatch):
         assert limited.headers["retry-after"] == "60"
     finally:
         agents_router._discovery_requests.clear()
+
+
+def test_order_status_endpoint_rejects_payment_status_mutation(client, session):
+    admin = UserService(session).create_user(
+        email="order.admin@example.test", name="Order Admin",
+        password="test-password", role="ADMIN",
+    )
+    customer = UserService(session).create_user(
+        email="order.payment-owner@example.test", name="Order Owner",
+        password="test-password",
+    )
+    product = Product(
+        name="Payment integrity product", price=Decimal("15.00"), quantity=2,
+        product_status_record=get_lookup(session, ProductStatus, "AVAILABLE"),
+    )
+    session.add(product)
+    session.commit()
+    order = create_order(
+        product_id=product.id, quantity=1, address="123 Integrity Road",
+        contact="0700000000", session=session, user_id=customer.private_id,
+    )
+
+    response = client.patch(
+        f"/api/v1/orders/{order.id}/status",
+        headers=auth_headers(admin),
+        json={"order_status": "APPROVED", "payment_status": "PAID"},
+    )
+
+    assert response.status_code == 422
+    assert session.get(type(order), order.id).payment_status == "NOT YET PAID"

@@ -179,3 +179,60 @@ def test_conversation_history_is_reused_and_phone_number_is_not_stored(session, 
     assert len(rows) == 4
     assert all("256700000000" not in row.conversation_key for row in rows)
     assert all(row.conversation_key == rows[0].conversation_key for row in rows)
+
+
+def test_unsupported_media_receives_a_text_fallback_instead_of_being_silently_ignored(session, monkeypatch):
+    import services.ai_agents as ai_agents
+    import services.whatsapp_webhook as webhook
+
+    monkeypatch.setenv("WHATSAPP_APP_SECRET", "synthetic-conversation-key")
+    captured = []
+    monkeypatch.setattr(
+        ai_agents, "run_agent",
+        lambda agent, question, db, conversation_history=None: (
+            captured.append(question)
+            or {"answer": "Please describe the item in a text message.", "model": "test-model"}
+        ),
+    )
+    monkeypatch.setattr(
+        webhook, "send_whatsapp_text",
+        lambda recipient, message: {"messages": [{"id": "out-media-1"}]},
+    )
+    payload = {"entry": [{"changes": [{"value": {"messages": [{
+        "id": "wamid.media-1", "from": "256700000000", "type": "image",
+        "image": {"id": "media-id"},
+    }]}}]}]}
+
+    assert process_whatsapp_payload(payload, session) == 1
+    assert len(captured) == 1
+    assert "sent an image" in captured[0].lower()
+
+
+def test_delivery_status_received_before_outbound_row_is_applied_later(session, monkeypatch):
+    import services.ai_agents as ai_agents
+    import services.whatsapp_webhook as webhook
+    from models.whatsapp_conversation_model import WhatsAppConversationMessage
+
+    monkeypatch.setenv("WHATSAPP_APP_SECRET", "synthetic-conversation-key")
+    monkeypatch.setattr(
+        ai_agents, "run_agent",
+        lambda *args, **kwargs: {"answer": "Here are the details.", "model": "test-model"},
+    )
+    monkeypatch.setattr(
+        webhook, "send_whatsapp_text",
+        lambda *args, **kwargs: {"messages": [{"id": "wamid.outbound-early-status"}]},
+    )
+    status_payload = {"entry": [{"changes": [{"value": {"statuses": [{
+        "id": "wamid.outbound-early-status", "status": "read",
+    }]}}]}]}
+    assert process_whatsapp_payload(status_payload, session) == 0
+
+    message_payload = {"entry": [{"changes": [{"value": {"messages": [{
+        "id": "wamid.inbound-after-status", "from": "256700000000",
+        "type": "text", "text": {"body": "Tell me about this product"},
+    }]}}]}]}
+    assert process_whatsapp_payload(message_payload, session) == 1
+    outbound = session.query(WhatsAppConversationMessage).filter_by(
+        message_id="wamid.outbound-early-status"
+    ).one()
+    assert outbound.delivery_status == "read"

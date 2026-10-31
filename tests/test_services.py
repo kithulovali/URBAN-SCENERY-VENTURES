@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import pytest
+
 from models import Order, Payment, Product, User
 from models.utils import ProductStatus
 from services.lookup_service import get_lookup
@@ -72,8 +74,9 @@ def test_payment_crud_and_order_deletion_do_not_emit_orm_warnings(session):
 
     assert delete_payment(payment_id, session) is True
     assert session.get(Payment, payment_id) is None
-    assert delete_order(order_id, session) is True
-    assert session.get(Order, order_id) is None
+    with pytest.raises(ValueError, match="cannot be deleted"):
+        delete_order(order_id, session)
+    assert session.get(Order, order_id) is not None
 
 def test_order_creation_reserves_stock_and_rolls_back_failed_reservation(session):
     product = make_product(session, quantity=5)
