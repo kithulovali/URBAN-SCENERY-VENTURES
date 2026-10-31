@@ -15,6 +15,7 @@ class OrderCreate(BaseModel):
 
 
 class OrderStatusUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     order_status: str = Field(..., min_length=3, max_length=32, description="Administrative fulfilment status; payment status is provider-controlled")
 
 
