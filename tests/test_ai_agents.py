@@ -180,7 +180,7 @@ def test_new_agents_have_safe_deterministic_fallbacks(session, monkeypatch):
     assert image_result["model"] == "deterministic-fallback"
     assert "no image was generated" in image_result["answer"]
     assert shopping_result["model"] == "deterministic-fallback"
-    assert "could not identify a matching" in shopping_result["answer"]
+    assert "I can help you find something suitable" in shopping_result["answer"]
     assert growth_result["model"] == "deterministic-fallback"
     assert "not verified revenue" in growth_result["answer"]
     assert ai_agents.AGENT_PROMPT_FILES["growth_optimization"] == "growth_optimization.md"
